@@ -26,7 +26,7 @@ from sklearn.preprocessing import normalize
 from utils.benchmark_result import BaselineResult
 from utils.thread_reader import LabeledThreadReader
 
-from 
+from utils.data_utils import read_datys_data
 import sys, os.path
 sys.path.append(os.path.abspath('/app/src/utils/'))
 sys.path.append(os.path.abspath('/app/src/'))
@@ -39,62 +39,11 @@ es_client = ESClient(index=INDEX_NAME, scroll_loop_limit=10, host=host, port=920
 import DATYS
 from DATYS.run_experiment import infer, infer_get_top_candidates
 # importlib.reload(DATYS.run_experiment)
-INDEX_380 = "test_380_with_label"
 
-
-def read_datys_data():
-    """
-        This funtion helps read data provided by DATYS
-    """
-    fqn_threads_dict = {}
-    for _f in glob.glob("/app/stackoverflow_dump/datys_data/data/so_threads/*"):
-        with open(_f, "r") as fp:
-            if "notjava" in _f:
-                continue
-            thread_id = _f.split(os.sep)[-1].split(".")[0]
-            content = fp.read()
-            pattern = '<API label="(.*?)">(.*?)</API>'
-            for line in content.split("\n"):
-                match = re.search(pattern, line)
-                while match is not None:
-                    s = match.start()
-                    matching_tag = match.group(0)
-                    label =  match.group(1).strip()
-                    api = match.group(2)
-                    if label == 'com.google.common.collect.Sets.difference"':
-                        label = 'com.google.common.collect.Sets.difference'
-                    elif label == 'com.google.common.collect.EnumBiMap.pu':
-                        label = 'com.google.common.collect.EnumBiMap.put'
-                    elif label == 'org.mockito.stubbing.OngoingStubbing':
-                        label = 'org.mockito.stubbing.OngoingStubbing.thenReturn'
-                    elif label == 'com.google.common.collect.' and thread_id == '5716267':
-                        label = 'com.google.common.collect.Multimaps.index'
-                    elif label == 'com.google.common.io.Closer.reclose' and thread_id == '39658005':
-                        label = 'com.google.common.io.Closer.close'
-                    elif label == 'om.google.common.collect.BiMap' and thread_id == '61625556':
-                        label = 'com.google.common.collect.BiMap.synchronizedBiMap'
-                    elif label == "org.mockito.Mockito.argThat" and thread_id == "23273230":
-                        label = ""
-                    elif label == "org.assertj.core.api.OptionalIntAssert." and thread_id == "48866139":
-                        label = ""
-                    elif label == "org.mockito.Mockito.then" and thread_id == "42082918":
-                        label = "org.mockito.Mockito.when"
-                    elif label == "org.mockito.stubbing.OngoingStubbing.thenThrow" and thread_id == "19155369":
-                        label = "org.mockito.stubbing.OngoingStubbing.thenReturn"
-                    if label != "None" and label != "":
-                        if label not in fqn_threads_dict:
-                            fqn_threads_dict[label] = []
-                        if thread_id not in fqn_threads_dict[label]:
-                            fqn_threads_dict[label].append(thread_id)
-                        
-                    line = re.sub(re.escape(matching_tag), api, line, 1)
-                    match = re.search(pattern, line)
-    return fqn_threads_dict
 
 def benchmark_datys():
     is_train_set = False
     IS_PRINT = False
-    INDEX_380 = "test_380_with_label"
     do_print_failed_cases = True
     data = read_datys_data()
     predictions  = {}
@@ -107,25 +56,13 @@ def benchmark_datys():
     tps = []
     failed_cases = []
 
-    with open('../api_method_candidates.json', "r") as fp:
+    with open('data/api_method_candidates.json', "r") as fp:
         api_method_candidates = json.load(fp)
-
-    for k in ["c", "verify", "andDo", "Bibe", "Nome", "trimResults", "expireAfterWrite", "Ordering.natural", "Objects.equal"]:
-        data.pop(k)
-    pop_key_list = []
-
-    for fqn, label in data.items():
-        # do datys    
-        if "</API>" in fqn:
-            pop_key_list.append(fqn)
-    for k in pop_key_list:
-        data.pop(k)
-
-
     with open(f"data/test_threads.json", "r") as fp:
         test_threads = json.load(fp)
     with open(f"data/apis_having_emb_test_set.json", "r") as fp:
         apis = json.load(fp)
+
     test_dict = {}
     with open(f"data/text_code_pairs_test.jsonl", "r") as fp:
         for line in fp.readlines():
@@ -143,6 +80,12 @@ def benchmark_datys():
                 test_dict[target_fqn][thread_id].append(_idx)
 
     
+    with open("data/search_threads_from_es.json", "r") as fp:
+        queried_threads = json.load(fp)
+    with open("data/title.json", "r") as fp:
+        thread_titles = json.load(fp)
+    with open("data/tags.json", "r") as fp:
+        thread_tags = json.load(fp)
 
     count = 0
     test_apis = []
@@ -157,29 +100,24 @@ def benchmark_datys():
         labels_ = [lbl for lbl in labels_ if lbl in test_threads]
 
         simple_name = fqn.split(".")[-1]
-        class_name= fqn.split(".")[-2]
 
-        threads, total_matches = es_client.query(INDEX_380, f"{simple_name} {simple_name}(", op="or", field="text")
-        other_threads, total_matches = es_client.query(INDEX_380, f"{simple_name} {simple_name}(", op="or", field="code")
-        threads = [thread['_id'] for thread in threads]
-        other_threads = [thread['_id'] for thread in other_threads if thread['_id'] not in threads]
-        threads = threads + other_threads
-        threads = [thrd for thrd in threads if thrd in test_threads]
-
+        threads = queried_threads[api]
         
         if fqn not in predictions:
             predictions[fqn] = []
 
         for thread_id in threads:
-            thread = es_client.get(thread_id, INDEX_380)
+            thread_title = thread_titles[thread_id]
+            thread_tag = thread_tags[thread_id]
             cand_dict = {}
 
             cand_dict = api_method_candidates[simple_name]
-            thread_path = glob.glob("/app/stackoverflow_dump/datys_data/data/so_threads/"+str(thread_id)+".*")[0]
+            thread_path = glob.glob("data/so_threads/"+str(thread_id)+".*")[0]
+
             with open(thread_path, "r") as tfp:
                 thread_content = tfp.read()
                 
-            list_mentions = infer_get_top_candidates(thread_id, thread_content, thread['title'], thread['tags'], simple_name, cand_dict)
+            list_mentions = infer_get_top_candidates(thread_id, thread_content, thread_title, thread_tag, simple_name, cand_dict)
             predicted_apis = list_mentions[0]['preds']
             if fqn in predicted_apis:
                 predictions[fqn].append(thread_id)

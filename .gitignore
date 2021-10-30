@@ -24,3 +24,4 @@ output/
 .notebooks/
 
 model/*.bin
+data/

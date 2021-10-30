@@ -3,6 +3,9 @@ import glob
 import re
 
 def read_datys_data():
+    """
+        This funtion helps read data provided by DATYS
+    """
     fqn_threads_dict = {}
     for _f in glob.glob("/app/stackoverflow_dump/datys_data/data/so_threads/*"):
         with open(_f, "r") as fp:
@@ -10,7 +13,6 @@ def read_datys_data():
                 continue
             thread_id = _f.split(os.sep)[-1].split(".")[0]
             content = fp.read()
-            # thread = Thread(content)
             pattern = '<API label="(.*?)">(.*?)</API>'
             for line in content.split("\n"):
                 match = re.search(pattern, line)
@@ -47,4 +49,15 @@ def read_datys_data():
                         
                     line = re.sub(re.escape(matching_tag), api, line, 1)
                     match = re.search(pattern, line)
+
+            for k in ["c", "verify", "andDo", "Bibe", "Nome", "trimResults", "expireAfterWrite", "Ordering.natural", "Objects.equal"]:
+                fqn_threads_dict.pop(k)
+            pop_key_list = []
+
+            for fqn, label in fqn_threads_dict.items():
+                # do datys    
+                if "</API>" in fqn:
+                    pop_key_list.append(fqn)
+            for k in pop_key_list:
+                fqn_threads_dict.pop(k)
     return fqn_threads_dict
