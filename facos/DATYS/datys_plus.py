@@ -1,18 +1,13 @@
-import os
 import traceback
-import glob
 import json
 import re
-from bs4 import BeautifulSoup
 
-from sklearn.feature_extraction.text import CountVectorizer, TfidfTransformer, TfidfVectorizer
+
 
 from .utils.code_extractor import *
 from .Thread import Thread, ThreadInfer
 from .Metrics import eval_mentions
 
-import sys
-sys.path.append(os.path.abspath('./data/'))
 
 data_labeling_dir = "/app/data/so_threads/"
 tags_dir = "data/tags.json"
@@ -104,18 +99,15 @@ def type_scoping_infer_top_candidates_plus(mention, thread, candidates, return_a
         score = [0 for _ in org_cands]
         
     else:
-        # prediction = score_list[0][0]
         prediction = [api_score[0] for api_score in score_list]
         score = [api_score[1] for api_score in score_list]
     if len(prediction) < 2:
-        # print(prediction)
         for can in org_cands:
             if can not in prediction:
                 prediction.append(can)
                 score.append(0)
     terms = []
     for can in prediction:
-        # relevant_terms = 1
         relevant_terms = 0
         can_terms = can.split(".")[:-1]
         for term in can_terms:
@@ -171,7 +163,6 @@ def infer_get_top_candidates_plus(thread_id, thread_content, thread_title, threa
         new_text_mentions.append(mention)
 
 
-    datys_cand_max_score = {}
     datys_cand_term_counts = []
     datys_cand_max_scores = []
     datys_cands = []

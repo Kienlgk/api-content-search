@@ -1,20 +1,10 @@
-import os
-import traceback
-import glob
 import json
-import re
-from bs4 import BeautifulSoup
-
 
 from .utils.code_extractor import *
-from .Thread import Thread, ThreadInfer
+from .Thread import Thread
 from .Metrics import eval_mentions
 from utils.datys_utils import tokenize
 
-import sys
-sys.path.append(os.path.abspath('./data/'))
-
-data_labeling_dir = "/app/data/so_threads/"
 tags_dir = "data/tags.json"
 title_dir = "data/title.json"
 api_method_candidates_dir = "data/tags.json"
@@ -46,7 +36,6 @@ def type_scoping_infer_top_candidates(mention, thread, candidates):
     code_snippets = thread.get_code()
     text_scope_tokens, content_vocabs = tokenize(text_scope)
     
-    # candidates = deepcopy(api_cands[fn_name])
     filtered_cands = []
     for fqn, lib in candidates.items():
         for tag in tags:
@@ -87,47 +76,30 @@ def type_scoping_infer_top_candidates(mention, thread, candidates):
 
         if class_name in text_scope_tokens:
             score_dict[can] += 1
-            # score_dict[can] += content_vocabs[class_name]
             can_component_scopes[can].append("text")
         
     score_list = [(api, score) for api, score in score_dict.items()]
     score_list = sorted(score_list, key=lambda api: api[1], reverse=True)
-    # if thread.thread_id=="13379071" and "weakKeys" in candidates[0]:
-    #     print(score_list)
     if len(score_list) == 0 or score_list[0][1] == 0:
         prediction = []
         score = 0
     else:
-        # prediction = score_list[0][0]
         prediction = [api_score[0] for api_score in score_list if api_score[1] == score_list[0][1]]
         score = score_list[0][1]
     
     if len(prediction) > 0:
-        # print(can_component_scopes[score_list[0][0]])
         return prediction, score, can_component_scopes[score_list[0][0]], can_component_scopes
     else:
         return prediction, score, [], can_component_scopes
 
 
 def infer_get_top_candidates(thread_id, thread_content, thread_title, thread_tags, simple_method_name, api_candidates):
-    # Start
     list_all_predicted_mentions = []
     a_thread = Thread(thread_id, thread_content, thread_title, thread_tags)
-    # print(thread_content)
-    # print(a_thread.get_text_wo_label())
     possible_type_list = a_thread.get_possible_type_dict()
         
     p_type_dict = a_thread.extract_possible_types()
-    # text_mentions = a_thread.get_api_mention_text()
-    # text_mentions = [mention for mention in text_mentions if mention['name'].split(".")[-1] == simple_method_name]
-    # text_mentions = [dict(t) for t in {tuple(d.items()) for d in text_mentions}]
-    # if len(text_mentions) == 0:
-    #     return [[]]
-    # else:
-    #     pass
     text_mentions = [{'name': simple_method_name,'thread_id': thread_id}]
-    # if simple_method_name == "weakKeys" and thread_id == "13379071":
-    #     pass
 
     new_text_mentions = []
     for m_idx, m in enumerate(text_mentions):
@@ -153,7 +125,6 @@ def infer_get_top_candidates(thread_id, thread_content, thread_title, thread_tag
         new_text_mentions.append(mention)
 
 
-    # text_scope = get_text_scope(new_text_mentions, a_thread)
     for mention in new_text_mentions:
         mention['preds'], mention['score'], mention['scopes'], mention['candidates_scope'] = type_scoping_infer_top_candidates(mention, a_thread, api_candidates)
 
