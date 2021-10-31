@@ -139,7 +139,7 @@ def extract_code(code_blk):
     return var_type_dict, fn_var_dict, import_dict
 
 import json
-class_method_dict_dir = "/app/notebooks/pipeline_step_1/DATYS/data/class_method_dict.json"
+class_method_dict_dir = "/app/facos/data/class_method_dict.json"
 with open(class_method_dict_dir, "r") as class_methods_dict_fp:
     class_methods_dict = json.load(class_methods_dict_fp)
 

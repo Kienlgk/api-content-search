@@ -7,7 +7,7 @@ def read_datys_data():
         This funtion helps read data provided by DATYS
     """
     fqn_threads_dict = {}
-    for _f in glob.glob("/app/stackoverflow_dump/datys_data/data/so_threads/*"):
+    for _f in glob.glob("data/so_threads/*"):
         with open(_f, "r") as fp:
             if "notjava" in _f:
                 continue

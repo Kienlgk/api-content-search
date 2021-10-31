@@ -13,7 +13,7 @@ services:
                   count: all
                   capabilities: [gpu]
         ports:
-            - "9191:9191"
+            - "9292:9292"
         volumes:
             - ./:/app/facos
         tty: true
