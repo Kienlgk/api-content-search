@@ -52,10 +52,8 @@ from transformers import AutoTokenizer, AutoModel
 
 from torch.utils.tensorboard import SummaryWriter
 from torch.cuda.amp import autocast
-from dataset import TripletTensorDataset, TripletTensorDatasetV2, TripletTensorDatasetV3
-# from transformers import RobertaForMaskedLM as RobertaModel
+
 MODEL_CLASSES = {'roberta': (RobertaConfig, RobertaModel, RobertaTokenizer)}
-# MODEL_CLASSES = {'roberta': (RobertaConfig, AutoModel, AutoTokenizer)}
 
 logging.basicConfig(format = '%(asctime)s - %(levelname)s - %(name)s -   %(message)s',
                     datefmt = '%m/%d/%Y %H:%M:%S',
@@ -289,13 +287,6 @@ def main():
     parser.add_argument("--load_model_path", default=None, type=str, 
                         help="Path to trained model: Should contain the .bin files" )    
     ## Other parameters
-    parser.add_argument("--train_filename", default=None, type=str, 
-                        help="The train filename. Should contain the .jsonl files for this task.")
-    parser.add_argument("--dev_filename", default=None, type=str, 
-                        help="The dev filename. Should contain the .jsonl files for this task.")
-    parser.add_argument("--test_filename", default=None, type=str, 
-                        help="The test filename. Should contain the .jsonl files for this task.")  
-    
     parser.add_argument("--config_name", default="", type=str,
                         help="Pretrained config name or path if not the same as model_name")
     parser.add_argument("--tokenizer_name", default="", type=str,
@@ -303,32 +294,17 @@ def main():
     parser.add_argument("--max_source_length", default=512, type=int,
                         help="The maximum total source sequence length after tokenization. Sequences longer "
                              "than this will be truncated, sequences shorter will be padded.")
-    parser.add_argument("--max_target_length", default=32, type=int,
-                        help="The maximum total target sequence length after tokenization. Sequences longer "
-                             "than this will be truncated, sequences shorter will be padded.")
-    
-    parser.add_argument("--do_train", action='store_true',
-                        help="Whether to run training.")
-    parser.add_argument("--do_eval", action='store_true',
-                        help="Whether to run eval on the dev set.")
-    parser.add_argument("--do_test", action='store_true',
-                        help="Whether to run eval on the dev set.")
-    parser.add_argument("--do_infer", action='store_true',
-                        help="Whether to run inferencing on the new files.")
+
     parser.add_argument("--do_lower_case", action='store_true',
                         help="Set this flag if you are using an uncased model.")
     parser.add_argument("--no_cuda", action='store_true',
                         help="Avoid using CUDA when available") 
-    parser.add_argument("--train_batch_size", default=8, type=int,
+    parser.add_argument("--train_batch_size", default=32, type=int,
                         help="Batch size per GPU/CPU for training.")
-    parser.add_argument("--eval_batch_size", default=8, type=int,
-                        help="Batch size per GPU/CPU for evaluation.")
     parser.add_argument('--gradient_accumulation_steps', type=int, default=1,
                         help="Number of updates steps to accumulate before performing a backward/update pass.")
-    parser.add_argument("--learning_rate", default=5e-5, type=float,
+    parser.add_argument("--learning_rate", default=1e-3, type=float,
                         help="The initial learning rate for Adam.")
-    parser.add_argument("--beam_size", default=10, type=int,
-                        help="beam size for beam search")    
     parser.add_argument("--weight_decay", default=0.0, type=float,
                         help="Weight deay if we apply some.")
     parser.add_argument("--adam_epsilon", default=1e-8, type=float,
@@ -339,10 +315,6 @@ def main():
                         help="Total number of training epochs to perform.")
     parser.add_argument("--max_steps", default=-1, type=int,
                         help="If > 0: set total number of training steps to perform. Override num_train_epochs.")
-    parser.add_argument("--eval_steps", default=-1, type=int,
-                        help="")
-    parser.add_argument("--train_steps", default=-1, type=int,
-                        help="")
     parser.add_argument("--warmup_steps", default=0, type=int,
                         help="Linear warmup over warmup_steps.")
     parser.add_argument("--local_rank", type=int, default=-1,
@@ -381,7 +353,7 @@ def main():
     tokenizer = tokenizer_class.from_pretrained(args.tokenizer_name if args.tokenizer_name else args.model_name_or_path,do_lower_case=args.do_lower_case)
 
     encoder = model_class.from_pretrained(args.model_name_or_path,config=config)
-    model= SimilarityClassifier(encoder=encoder,config=config, max_length=args.max_target_length,
+    model= SimilarityClassifier(encoder=encoder,config=config,
                                 sos_id=tokenizer.cls_token_id, eos_id=tokenizer.sep_token_id,
                                 cuda=args.cuda)
     if args.load_model_path is not None:
@@ -414,83 +386,69 @@ def main():
             exit()
         return subword_indices_vector
 
-    if args.do_infer:
-        activation = {}
+    activation = {}
 
-        for child_i, child in enumerate(model.children()):
-            for k,v in child.named_parameters():
-                v.requires_grad = False
+    for child_i, child in enumerate(model.children()):
+        for k,v in child.named_parameters():
+            v.requires_grad = False
 
-
-        root_path = ""
-        infer_out_dir = os.path.join(root_path, "data/preprocess/")
-        infer_file= os.path.join(root_path, "data/preprocess/text_code_pairs_test.jsonl")
-        file_path = os.path.join(infer_out_dir, "data/preprocess/test_127_threads_result.json")
-            
-        os.makedirs(infer_out_dir, exist_ok=True)
-
-        # Stack Overflow pairs
-        # infer_file="data/approach_4/text_code_pairs_test.jsonl"
-        # # infer_file="data/approach_4/sample_train_pairs.jsonl"
-        # file_path = infer_out_dir+os.sep+"test_127_threads_result.json"
-
-        # API doc implementation pairs
-        # infer_file="data/approach_4/doc_impl_pairs.jsonl"
-        # file_path = infer_out_dir+os.sep+"api_doc_impl_embs.json"
-        # infer_file="data/approach_4/text_code_pairs_train.jsonl"
-        # file_path = infer_out_dir+os.sep+"train_253_threads_result.json"
-
-        eval_examples = read_pairs(infer_file, mode="train")
-        # eval_features = convert_pairs_to_features(eval_examples, tokenizer, args)
-        eval_features, _, _ = get_training_features(eval_examples, tokenizer, args)
-        eval_pair_id = torch.tensor([f.pair_id for f in eval_features], dtype=torch.long)
-        eval_text_code_ids = torch.tensor([f.text_code_ids for f in eval_features], dtype=torch.long)
-        eval_text_code_mask = torch.tensor([f.text_code_mask for f in eval_features], dtype=torch.long)
-        eval_cmt_impl_ids = torch.tensor([f.cmt_impl_ids for f in eval_features], dtype=torch.long)
-        eval_cmt_impl_mask = torch.tensor([f.cmt_impl_mask for f in eval_features], dtype=torch.long)
-        eval_label = torch.tensor([f.label for f in eval_features], dtype=torch.long)
-
-        eval_dataset = TensorDataset(
-                                    eval_pair_id, 
-                                    eval_text_code_ids, 
-                                    eval_text_code_mask, 
-                                    eval_cmt_impl_ids, 
-                                    eval_cmt_impl_mask, 
-                                    eval_label)
-
-        eval_sampler = SequentialSampler(eval_dataset)
-        eval_dataloader = DataLoader(eval_dataset, sampler=eval_sampler, batch_size=args.train_batch_size)
-
-        logger.info("\n***** Running evaluation *****")
-        logger.info("  Num examples = %d", len(eval_examples))
-        logger.info("  Batch size = %d", args.eval_batch_size)
-
-        model.eval()
-        result_idx = 0
-        output_results = {}
-        softmax = nn.Softmax(dim=1)
-        for eval_batch in tqdm(eval_dataloader,total=len(eval_dataloader)):
-            eval_batch = tuple(t.to(device) for t in eval_batch)
-            eval_pair_id, eval_text_code_ids, eval_text_code_mask, eval_cmt_impl_ids, eval_cmt_impl_mask, eval_label = eval_batch
-            eval_preds = model(
-                            eval_text_code_ids, 
-                            eval_text_code_mask, 
-                            eval_cmt_impl_ids, 
-                            eval_cmt_impl_mask
-                            )
-            
-            eval_preds = softmax(eval_preds)
-            chosen_preds = torch.argmax(eval_preds, dim=1)
-            for eval_i, each_label in enumerate(eval_label):
-                eval_predict_result = chosen_preds[eval_i].cpu().detach().numpy()
-                eval_preds_result = eval_preds[eval_i].cpu().detach().numpy()
-                # output_results[str(result_idx)] = eval_predict_result.tolist()
-                output_results[str(result_idx)] = [eval_predict_result.tolist(), eval_preds_result.tolist()]
-                result_idx += 1
+    root_path = "/app/facos/"
+    infer_out_dir = os.path.join(root_path, "output/preprocess/")
+    infer_file= os.path.join(root_path, "data/text_code_pairs_test.jsonl")
+    file_path = os.path.join(infer_out_dir, "test_127_threads_result.json")
         
-        # import codecs
-        with open(file_path, "w+") as fp:
-            json.dump(output_results, fp, indent=2)
+    os.makedirs(infer_out_dir, exist_ok=True)
+
+
+    eval_examples = read_pairs(infer_file, mode="train")
+    eval_features, _, _ = get_training_features(eval_examples, tokenizer, args)
+    eval_pair_id = torch.tensor([f.pair_id for f in eval_features], dtype=torch.long)
+    eval_text_code_ids = torch.tensor([f.text_code_ids for f in eval_features], dtype=torch.long)
+    eval_text_code_mask = torch.tensor([f.text_code_mask for f in eval_features], dtype=torch.long)
+    eval_cmt_impl_ids = torch.tensor([f.cmt_impl_ids for f in eval_features], dtype=torch.long)
+    eval_cmt_impl_mask = torch.tensor([f.cmt_impl_mask for f in eval_features], dtype=torch.long)
+    eval_label = torch.tensor([f.label for f in eval_features], dtype=torch.long)
+
+    eval_dataset = TensorDataset(
+                                eval_pair_id, 
+                                eval_text_code_ids, 
+                                eval_text_code_mask, 
+                                eval_cmt_impl_ids, 
+                                eval_cmt_impl_mask, 
+                                eval_label)
+
+    eval_sampler = SequentialSampler(eval_dataset)
+    eval_dataloader = DataLoader(eval_dataset, sampler=eval_sampler, batch_size=args.train_batch_size)
+
+    logger.info("\n***** Running inference *****")
+    logger.info("  Num examples = %d", len(eval_examples))
+    logger.info("  Batch size = %d", args.train_batch_size)
+
+    model.eval()
+    result_idx = 0
+    output_results = {}
+    softmax = nn.Softmax(dim=1)
+    for eval_batch in tqdm(eval_dataloader,total=len(eval_dataloader)):
+        eval_batch = tuple(t.to(device) for t in eval_batch)
+        eval_pair_id, eval_text_code_ids, eval_text_code_mask, eval_cmt_impl_ids, eval_cmt_impl_mask, eval_label = eval_batch
+        eval_preds = model(
+                        eval_text_code_ids, 
+                        eval_text_code_mask, 
+                        eval_cmt_impl_ids, 
+                        eval_cmt_impl_mask
+                        )
+        
+        eval_preds = softmax(eval_preds)
+        chosen_preds = torch.argmax(eval_preds, dim=1)
+        for eval_i, each_label in enumerate(eval_label):
+            eval_predict_result = chosen_preds[eval_i].cpu().detach().numpy()
+            eval_preds_result = eval_preds[eval_i].cpu().detach().numpy()
+            output_results[str(result_idx)] = [eval_predict_result.tolist(), eval_preds_result.tolist()]
+            result_idx += 1
+            
+    # import codecs
+    with open(file_path, "w+") as fp:
+        json.dump(output_results, fp, indent=2)
 
 
 

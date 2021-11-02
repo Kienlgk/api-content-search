@@ -3,6 +3,7 @@ import glob
 import json
 from copy import deepcopy
 from utils.benchmark_result import BaselineResult
+from utils.thread_reader import LabeledThreadReader
 
 from utils.data_utils import read_datys_data
 from facos.DATYS.datys_plus import infer_get_top_candidates_plus
@@ -23,6 +24,7 @@ def check_datys_combine_with_ratio(a, b):
     with open(f"data/test_threads.json", "r") as fp:
         test_threads = json.load(fp)
     with open(f"output/test_127_threads_result.json", "r") as fp:
+    # with open(f"output/preprocess/test_127_threads_result.json", "r") as fp:
         classification_result = json.load(fp)
 
     test_dict = {}
@@ -115,30 +117,23 @@ def check_datys_combine_with_ratio(a, b):
     F1 = sum([result.f1 for result in all_baseline_result])/len(all_baseline_result)
 
 
-    print("Nrof APIs: ", len(all_baseline_result))
-    print("avg Prec: ", Prec)
-    print("avg Recall: ", Recall)
-    print("avg F1: ", F1)
+    # print("Nrof APIs: ", len(all_baseline_result))
+    print("weighting factor x: ", round(a, 1))
+    print("avg Prec: ", round(Prec,4))
+    print("avg Recall: ", round(Recall, 4))
+    print("avg F1: ", round(F1, 4))
+    print("=========")
     return Prec, Recall, F1
 
 
 
 def run_facos_ablation():
-    list_prec = []
-    list_recall = []
-    list_f1 = []
-    os.makedirs("output/", exist_ok=True)
-    with open(f"output/facos_ablation.txt", "w+") as fp:
-        for i in range(0, 11):
-            a = 0.1*i
-            b = 1-a
-            Prec, Recall, F1 = check_datys_combine_with_ratio(a, b)
-            list_prec.append(f"{Prec:.4f}")
-            list_recall.append(f"{Recall:.4f}")
-            list_f1.append(f"{F1:.4f}")
-        print(f"list_prec: {list_prec}", file=fp)
-        print(f"list_recall: {list_recall}", file=fp)
-        print(f"list_f1: {list_f1}", file=fp)
+    for i in range(0, 11):
+        a = 0.1*i
+        b = 1-a
+        Prec, Recall, F1 = check_datys_combine_with_ratio(a, b)
+
+
 
 if __name__ == "__main__":
     run_facos_ablation()
